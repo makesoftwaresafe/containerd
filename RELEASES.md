@@ -117,9 +117,10 @@ The current state is available in the following tables:
 | [1.3](https://github.com/containerd/containerd/releases/tag/v1.3.10) | End of Life   | September 26, 2019 | March 4, 2021                                           |
 | [1.4](https://github.com/containerd/containerd/releases/tag/v1.4.13) | End of Life   | August 17, 2020    | March 3, 2022                                           |
 | [1.5](https://github.com/containerd/containerd/releases/tag/v1.5.18) | End of Life   | May 3, 2021        | February 28, 2023                                       |
-| [1.6](https://github.com/containerd/containerd/releases/tag/v1.6.23) | LTS           | February 15, 2022  | max(February 15, 2025 or next LTS + 6 months)           |
-| [1.7](https://github.com/containerd/containerd/releases/tag/v1.7.3)  | Active        | March 10, 2023     | active(release of 2.0 + 6 months), extended(EOL of 1.6) |
-| [2.0](https://github.com/containerd/containerd/milestone/35)         | Next          | TBD                | TBD                                                     |
+| [1.6](https://github.com/containerd/containerd/releases/tag/v1.6.36) | LTS           | February 15, 2022  | next LTS + 6 months                                     |
+| [1.7](https://github.com/containerd/containerd/releases/tag/v1.7.23) | Active        | March 10, 2023     | active(May 5, 2025), extended(EOL of 1.6)               |
+| [2.0](https://github.com/containerd/containerd/releases/tag/v2.0.0)  | Active        | November 5, 2024   | max(November 5, 2025 or release of 2.1 + 6 months)      |
+| [2.1](https://github.com/containerd/containerd/milestone/48)         | Next          | TBD                | TBD                                                     |
 
 > **_NOTE_** containerd v1.7 will end of life at the same time as v1.6 LTS. Due to
 > [Minimal Version Selection](https://go.dev/ref/mod#minimal-version-selection) used
@@ -140,25 +141,23 @@ of containerd for every supported version of Kubernetes.
 
 | Kubernetes Version | containerd Version            | CRI Version     |
 |--------------------|-------------------------------|-----------------|
-| 1.26               | 1.7.0+, 1.6.15+               | v1, v1alpha2 ** |
-| 1.27               | 1.7.0+, 1.6.15+               | v1              |
-| 1.28               | 1.7.0+, 1.6.15+               | v1              |
 | 1.29               | 1.7.11+, 1.6.27+              | v1              |
-| 1.30               | 2.0(wip), 1.7.13+, 1.6.28+    | v1              |
-| 1.31               | 2.0(wip), 1.7.20+, 1.6.34+    | v1              |
-
-** Note: containerd v1.6.*, and v1.7.* support CRI v1 and v1alpha2 through EOL as those releases continue to support older versions of k8s, cloud providers, and other clients using CRI v1alpha2. CRI v1alpha2 is deprecated in v1.7 and will be removed in containerd v2.0.
+| 1.30               | 2.0.0+, 1.7.13+, 1.6.28+      | v1              |
+| 1.31               | 2.0.0+, 1.7.20+, 1.6.34+      | v1              |
 
 Deprecated containerd and kubernetes versions
 
-| Containerd Version       | Kubernetes Version | CRI Version          |
-|--------------------------|--------------------|----------------------|
-| v1.0 (w/ cri-containerd) | 1.7, 1.8, 1.9      | v1alpha1             |
-| v1.1                     | 1.10+              | v1alpha2             |
-| v1.2                     | 1.10+              | v1alpha2             |
-| v1.3                     | 1.12+              | v1alpha2             |
-| v1.4                     | 1.19+              | v1alpha2             |
-| v1.5                     | 1.20+              | v1 (1.23+), v1alpha2 |
+| Containerd Version       | Kubernetes Version | CRI Version                          |
+|--------------------------|--------------------|--------------------------------------|
+| v1.0 (w/ cri-containerd) | 1.7, 1.8, 1.9      | v1alpha1                             |
+| v1.1                     | 1.10+              | v1alpha2                             |
+| v1.2                     | 1.10+              | v1alpha2                             |
+| v1.3                     | 1.12+              | v1alpha2                             |
+| v1.4                     | 1.19+              | v1alpha2                             |
+| v1.5                     | 1.20+              | v1 (1.23+), v1alpha2 (until 1.25) ** |
+| v1.6.15+, v1.7.0+        | 1.26+              | v1                                   |
+
+** Note: containerd v1.6.*, and v1.7.* support CRI v1 and v1alpha2 through EOL as those releases continue to support older versions of k8s, cloud providers, and other clients using CRI v1alpha2. CRI v1alpha2 is deprecated in v1.7 and will be removed in containerd v2.0.
 
 ### Backporting
 
@@ -348,17 +347,14 @@ follow that format.
 
 ### Go client API
 
-The Go client API, documented in
-[godoc](https://godoc.org/github.com/containerd/containerd/v2/client), is currently
-considered unstable. It is recommended to vendor the necessary components to
-stabilize your project build. Note that because the Go API interfaces with the
-GRPC API, clients written against a 1.0 Go API should remain compatible with
-future 1.x series releases.
+As of containerd 2.0, the Go client API documented in
+[godoc](https://godoc.org/github.com/containerd/containerd/v2/client) is stable.
+Note that because the Go client interfaces with the GRPC API, clients building on top
+of the Go client should remain compatible with future server releases implementing the
+same major GRPC API series. For backwards compatability and as a general rule of thumb,
+it is the client's responsibility to handle not implemented errors returned by the containerd daemon.
 
-We intend to stabilize the API in a future release when more integrations have
-been carried out.
-
-Any changes to the API should be detectable at compile time, so upgrading will
+Any changes to the Go client API should be detectable at compile time, so upgrading will
 be a matter of fixing compilation errors and moving from there.
 
 ### CRI GRPC API
@@ -444,13 +440,13 @@ The deprecated features are shown in the following table:
 | Built-in `aufs` snapshotter                                                      | containerd v1.5     | containerd v2.0 ✅                    | Use `overlayfs` snapshotter              |
 | Container label `containerd.io/restart.logpath`                                  | containerd v1.5     | containerd v2.0 ✅                    | Use `containerd.io/restart.loguri` label |
 | `cri-containerd-*.tar.gz` release bundles                                        | containerd v1.6     | containerd v2.0 ✅                    | Use `containerd-*.tar.gz` bundles        |
-| Pulling Schema 1 images (`application/vnd.docker.distribution.manifest.v1+json`) | containerd v1.7     | containerd v2.1 (Disabled in v2.0 ✅) | Use Schema 2 or OCI images               |
+| Pulling Schema 1 images (`application/vnd.docker.distribution.manifest.v1+prettyjws`) | containerd v1.7     | containerd v2.1 (Disabled in v2.0 ✅) | Use Schema 2 or OCI images               |
 | CRI `v1alpha2`                                                                   | containerd v1.7     | containerd v2.0 ✅                    | Use CRI `v1`                             |
 | Legacy CRI implementation of podsandbox support                                  | containerd v2.0     | containerd v2.0 ✅                    |                                          |
 | Go-Plugin library (`*.so`) as containerd runtime plugin                          | containerd v2.0     | containerd v2.1                       | Use external plugins (proxy or binary)   |
 
 - Pulling Schema 1 images has been disabled in containerd v2.0, but it still can be enabled by setting an environment variable `CONTAINERD_ENABLE_DEPRECATED_PULL_SCHEMA_1_IMAGE=1`
-  until containerd v2.1. `ctr` users have to specify `--local` too (e.g., `ctr images pull --local`).
+  until containerd v2.1. `ctr` users have to specify `--local` too (e.g., `ctr images pull --local`). Users of CRI clients (such as Kubernetes and `crictl`) have to specify this environment variable on the containerd daemon (usually in the systemd unit).
 
 ### Deprecated config properties
 The deprecated properties in [`config.toml`](./docs/cri/config.md) are shown in the following table:

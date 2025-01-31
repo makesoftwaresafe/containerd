@@ -394,7 +394,6 @@ func (a *API) ListContainers() []nri.Container {
 		case cri.ContainerState_CONTAINER_UNKNOWN:
 			continue
 		}
-		ctr := ctr
 		containers = append(containers, a.nriContainer(&ctr, nil))
 	}
 	return containers
@@ -631,6 +630,14 @@ func (p *criPodSandbox) GetCgroupsPath() string {
 
 func (p *criPodSandbox) GetPid() uint32 {
 	return p.pid
+}
+
+func (p *criPodSandbox) GetIPs() []string {
+	if p.IP == "" {
+		return nil
+	}
+	ips := append([]string{p.IP}, p.AdditionalIPs...)
+	return ips
 }
 
 //
