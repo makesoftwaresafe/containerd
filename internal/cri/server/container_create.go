@@ -161,21 +161,27 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 		return nil, fmt.Errorf("failed to query sandbox platform: %w", err)
 	}
 
+	ociRuntime, err := c.getPodSandboxRuntime(sandboxID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sandbox runtime: %w", err)
+	}
+
+	// mutate the extra CRI volume mounts from the runtime spec to properly specify the OCI image volume mount requests as bind mounts for this container
+	err = c.mutateMounts(ctx, config.GetMounts(), c.RuntimeSnapshotter(ctx, ociRuntime), sandboxID, platform)
+	if err != nil {
+		return nil, fmt.Errorf("failed to mount image volume: %w", err)
+	}
+
 	var volumeMounts []*runtime.Mount
 	if !c.config.IgnoreImageDefinedVolumes {
-		// Create container image volumes mounts.
+		// create a list of image volume mounts from the image spec that are not also already in the runtime config volume list
 		volumeMounts = c.volumeMounts(platform, containerRootDir, config, &image.ImageSpec.Config)
 	} else if len(image.ImageSpec.Config.Volumes) != 0 {
 		log.G(ctx).Debugf("Ignoring volumes defined in image %v because IgnoreImageDefinedVolumes is set", image.ID)
 	}
 
-	ociRuntime, err := c.config.GetSandboxRuntime(sandboxConfig, sandbox.Metadata.RuntimeHandler)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sandbox runtime: %w", err)
-	}
 	var runtimeHandler *runtime.RuntimeHandler
 	for _, f := range c.runtimeHandlers {
-		f := f
 		if f.Name == sandbox.Metadata.RuntimeHandler {
 			runtimeHandler = f
 			break
@@ -287,7 +293,7 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 		return nil, fmt.Errorf("failed to get container spec opts: %w", err)
 	}
 
-	containerLabels := buildLabels(config.Labels, image.ImageSpec.Config.Labels, crilabels.ContainerKindContainer)
+	containerLabels := util.BuildLabels(config.Labels, image.ImageSpec.Config.Labels, crilabels.ContainerKindContainer)
 
 	// TODO the sandbox in the cache should hold this info
 	runtimeName, runtimeOption, err := c.runtimeInfo(ctx, sandboxID)
@@ -710,7 +716,14 @@ func (c *criService) buildLinuxSpec(
 		}
 	}()
 
-	specOpts = append(specOpts, customopts.WithMounts(c.os, config, extraMounts, mountLabel, runtimeHandler))
+	var ociSpecOpts oci.SpecOpts
+	if ociRuntime.CgroupWritable {
+		ociSpecOpts = customopts.WithMountsCgroupWritable(c.os, config, extraMounts, mountLabel, runtimeHandler)
+	} else {
+		ociSpecOpts = customopts.WithMounts(c.os, config, extraMounts, mountLabel, runtimeHandler)
+	}
+
+	specOpts = append(specOpts, ociSpecOpts)
 
 	if !c.config.DisableProcMount {
 		// Change the default masked/readonly paths to empty slices
@@ -795,12 +808,12 @@ func (c *criService) buildLinuxSpec(
 		specOpts = append(specOpts, oci.WithRdt(rdtClass, "", ""))
 	}
 
-	for pKey, pValue := range getPassthroughAnnotations(sandboxConfig.Annotations,
+	for pKey, pValue := range util.GetPassthroughAnnotations(sandboxConfig.Annotations,
 		ociRuntime.PodAnnotations) {
 		specOpts = append(specOpts, customopts.WithAnnotation(pKey, pValue))
 	}
 
-	for pKey, pValue := range getPassthroughAnnotations(config.Annotations,
+	for pKey, pValue := range util.GetPassthroughAnnotations(config.Annotations,
 		ociRuntime.ContainerAnnotations) {
 		specOpts = append(specOpts, customopts.WithAnnotation(pKey, pValue))
 	}
@@ -930,12 +943,12 @@ func (c *criService) buildWindowsSpec(
 	// when trying to run the init process.
 	specOpts = append(specOpts, oci.WithUser(username))
 
-	for pKey, pValue := range getPassthroughAnnotations(sandboxConfig.Annotations,
+	for pKey, pValue := range util.GetPassthroughAnnotations(sandboxConfig.Annotations,
 		ociRuntime.PodAnnotations) {
 		specOpts = append(specOpts, customopts.WithAnnotation(pKey, pValue))
 	}
 
-	for pKey, pValue := range getPassthroughAnnotations(config.Annotations,
+	for pKey, pValue := range util.GetPassthroughAnnotations(config.Annotations,
 		ociRuntime.ContainerAnnotations) {
 		specOpts = append(specOpts, customopts.WithAnnotation(pKey, pValue))
 	}
@@ -982,12 +995,12 @@ func (c *criService) buildDarwinSpec(
 
 	specOpts = append(specOpts, customopts.WithDarwinMounts(c.os, config, extraMounts))
 
-	for pKey, pValue := range getPassthroughAnnotations(sandboxConfig.Annotations,
+	for pKey, pValue := range util.GetPassthroughAnnotations(sandboxConfig.Annotations,
 		ociRuntime.PodAnnotations) {
 		specOpts = append(specOpts, customopts.WithAnnotation(pKey, pValue))
 	}
 
-	for pKey, pValue := range getPassthroughAnnotations(config.Annotations,
+	for pKey, pValue := range util.GetPassthroughAnnotations(config.Annotations,
 		ociRuntime.ContainerAnnotations) {
 		specOpts = append(specOpts, customopts.WithAnnotation(pKey, pValue))
 	}

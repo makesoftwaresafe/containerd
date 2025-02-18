@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -247,7 +246,6 @@ func TestContainerCapabilities(t *testing.T) {
 			excludes: util.SubtractStringSlice(allCaps, "CAP_SYS_ADMIN"),
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			containerConfig, sandboxConfig, imageConfig, specCheck := getCreateContainerTestData()
 			ociRuntime := config.Runtime{}
@@ -429,7 +427,6 @@ func TestContainerAndSandboxPrivileged(t *testing.T) {
 			expectError:         false,
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			containerConfig.Linux.SecurityContext.Privileged = test.containerPrivileged
 			sandboxConfig.Linux.SecurityContext = &runtime.LinuxSandboxSecurityContext{
@@ -471,7 +468,6 @@ func TestPrivilegedBindMount(t *testing.T) {
 			expectedCgroupFSRO: false,
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			containerConfig.Linux.SecurityContext.Privileged = test.privileged
 			sandboxConfig.Linux.SecurityContext.Privileged = test.privileged
@@ -588,7 +584,6 @@ func TestMountPropagation(t *testing.T) {
 			expectErr:         true,
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			c := newTestCRIService()
 			c.os.(*ostesting.FakeOS).LookupMountFn = test.fakeLookupMountFn
@@ -645,7 +640,6 @@ func TestPidNamespace(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			containerConfig.Linux.SecurityContext.NamespaceOptions = &runtime.NamespaceOption{Pid: test.pidNS}
 			spec, err := c.buildContainerSpec(currentPlatform, testID, testSandboxID, testPid, "", testContainerName, testImageName, containerConfig, sandboxConfig, imageConfig, nil, ociRuntime, nil)
@@ -811,7 +805,6 @@ func TestUserNamespace(t *testing.T) {
 			err: true,
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			containerConfig.Linux.SecurityContext.NamespaceOptions = &runtime.NamespaceOption{UsernsOptions: test.userNS}
 			// By default, set sandbox and container config to the same (this is
@@ -991,7 +984,6 @@ func TestGenerateSeccompSecurityProfileSpecOpts(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			cri := &criService{}
 			cri.config.UnsetSeccompProfile = test.defaultProfile
@@ -1010,13 +1002,49 @@ func TestGenerateSeccompSecurityProfileSpecOpts(t *testing.T) {
 					ssp = csp
 				}
 				specOpts, err := cri.generateSeccompSpecOpts(ssp, test.privileged, !test.disable)
-				assert.Equal(t,
-					reflect.ValueOf(test.specOpts).Pointer(),
-					reflect.ValueOf(specOpts).Pointer())
 				if test.expectErr {
 					assert.Error(t, err)
 				} else {
 					assert.NoError(t, err)
+					if test.specOpts == nil && specOpts == nil {
+						return
+					}
+					if test.specOpts == nil || specOpts == nil {
+						t.Fatalf("unexpected nil specOpts, expected nil: %t, actual nil: %t", test.specOpts == nil, specOpts == nil)
+					}
+					// `specOpts` for seccomp only uses/modifies `*specs.Spec`, not
+					// `oci.Client` or `*containers.Container`, so let's construct a
+					// `*specs.Spec` and compare if the results are the same.
+					expected := runtimespec.Spec{
+						Linux: &runtimespec.Linux{},
+						Process: &runtimespec.Process{
+							Capabilities: &runtimespec.LinuxCapabilities{
+								Bounding: []string{
+									"CAP_DAC_READ_SEARCH",
+									"CAP_SYS_ADMIN",
+									"CAP_SYS_BOOT",
+									"CAP_SYS_CHROOT",
+									"CAP_SYS_MODULE",
+									"CAP_SYS_PACCT",
+									"CAP_SYS_PTRACE",
+									"CAP_SYS_RAWIO",
+									"CAP_SYS_TIME",
+									"CAP_SYS_TTY_CONFIG",
+									"CAP_SYS_NICE",
+									"CAP_SYSLOG",
+									"CAP_BPF",
+									"CAP_PERFMON",
+								},
+							},
+						},
+					}
+					var actual runtimespec.Spec
+					err := util.DeepCopy(&actual, &expected)
+					assert.NoError(t, err)
+
+					test.specOpts(context.TODO(), nil, nil, &expected)
+					specOpts(context.TODO(), nil, nil, &actual)
+					assert.Equal(t, expected, actual)
 				}
 			}
 		})
@@ -1167,7 +1195,6 @@ func TestGenerateApparmorSpecOpts(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			asp := test.sp
 			csp, err := generateApparmorSecurityProfile(test.profile)
@@ -1182,13 +1209,30 @@ func TestGenerateApparmorSpecOpts(t *testing.T) {
 					asp = csp
 				}
 				specOpts, err := generateApparmorSpecOpts(asp, test.privileged, !test.disable)
-				assert.Equal(t,
-					reflect.ValueOf(test.specOpts).Pointer(),
-					reflect.ValueOf(specOpts).Pointer())
 				if test.expectErr {
 					assert.Error(t, err)
 				} else {
 					assert.NoError(t, err)
+					if test.specOpts == nil && specOpts == nil {
+						return
+					}
+					if test.specOpts == nil || specOpts == nil {
+						t.Fatalf("unexpected nil specOpts, expected nil: %t, actual nil: %t", test.specOpts == nil, specOpts == nil)
+					}
+					// `specOpts` for seccomp only uses/modifies `*specs.Spec`, not
+					// `oci.Client` or `*containers.Container`, so let's construct a
+					// `*specs.Spec` and compare if the results are the same.
+					expected := runtimespec.Spec{
+						Linux:   &runtimespec.Linux{},
+						Process: &runtimespec.Process{},
+					}
+					var actual runtimespec.Spec
+					err := util.DeepCopy(&actual, &expected)
+					assert.NoError(t, err)
+
+					test.specOpts(context.TODO(), nil, nil, &expected)
+					specOpts(context.TODO(), nil, nil, &actual)
+					assert.Equal(t, expected, actual)
 				}
 			}
 		})
@@ -1273,7 +1317,6 @@ func TestMaskedAndReadonlyPaths(t *testing.T) {
 			privileged:       true,
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			c.config.DisableProcMount = test.disableProcMount
 			containerConfig.Linux.SecurityContext.MaskedPaths = test.masked
@@ -1329,7 +1372,6 @@ func TestHostname(t *testing.T) {
 			expectedEnv: "HOSTNAME=real-hostname",
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			sandboxConfig.Hostname = test.hostname
 			sandboxConfig.Linux.SecurityContext = &runtime.LinuxSandboxSecurityContext{
@@ -1510,7 +1552,6 @@ additional-group-for-root:x:22222:root
 			expected: runtimespec.User{UID: 1000, GID: 2000, AdditionalGids: []uint32{2000, 3333}},
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			containerConfig, sandboxConfig, imageConfig, _ := getCreateContainerTestData()
 			containerConfig.Linux.SecurityContext = test.securityContext
@@ -1579,7 +1620,6 @@ func TestNonRootUserAndDevices(t *testing.T) {
 			expectedDeviceGID:                  *testDevice.GID,
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			c.config.DeviceOwnershipFromSecurityContext = test.deviceOwnershipFromSecurityContext
 			containerConfig.Linux.SecurityContext.RunAsUser = test.uid
@@ -1657,7 +1697,6 @@ func TestPrivilegedDevices(t *testing.T) {
 			expectAllDevicesAllowed: true,
 		},
 	} {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			containerConfig.Linux.SecurityContext.Privileged = test.privileged
 			sandboxConfig.Linux.SecurityContext.Privileged = test.privileged

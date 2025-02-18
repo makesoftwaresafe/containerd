@@ -138,6 +138,22 @@ func WithHostNetwork(p *runtime.PodSandboxConfig) {
 	p.Linux.SecurityContext.NamespaceOptions.Network = runtime.NamespaceMode_NODE
 }
 
+// Set selinux level
+func WithSelinuxLevel(level string) PodSandboxOpts {
+	return func(p *runtime.PodSandboxConfig) {
+		if p.Linux == nil {
+			p.Linux = &runtime.LinuxPodSandboxConfig{}
+		}
+		if p.Linux.SecurityContext == nil {
+			p.Linux.SecurityContext = &runtime.LinuxSandboxSecurityContext{}
+		}
+		if p.Linux.SecurityContext.SelinuxOptions == nil {
+			p.Linux.SecurityContext.SelinuxOptions = &runtime.SELinuxOption{}
+		}
+		p.Linux.SecurityContext.SelinuxOptions.Level = level
+	}
+}
+
 // Set pod userns.
 func WithPodUserNs(containerID, hostID, length uint32) PodSandboxOpts {
 	return func(p *runtime.PodSandboxConfig) {
@@ -325,6 +341,27 @@ func WithIDMapVolumeMount(hostPath, containerPath string, uidMaps, gidMaps []*ru
 	}
 }
 
+func WithImageVolumeMount(image, containerPath string) ContainerOpts {
+	return WithIDMapImageVolumeMount(image, containerPath, nil, nil)
+}
+
+func WithIDMapImageVolumeMount(image string, containerPath string, uidMaps, gidMaps []*runtime.IDMapping) ContainerOpts {
+	return func(c *runtime.ContainerConfig) {
+		containerPath, _ = filepath.Abs(containerPath)
+		mount := &runtime.Mount{
+			ContainerPath: containerPath,
+			UidMappings:   uidMaps,
+			GidMappings:   gidMaps,
+			Image: &runtime.ImageSpec{
+				Image: image,
+			},
+			Readonly:       true,
+			SelinuxRelabel: true,
+		}
+		c.Mounts = append(c.Mounts, mount)
+	}
+}
+
 func WithWindowsUsername(username string) ContainerOpts {
 	return func(c *runtime.ContainerConfig) {
 		if c.Windows == nil {
@@ -468,6 +505,24 @@ func WithDevice(containerPath, hostPath, permissions string) ContainerOpts {
 		c.Devices = append(c.Devices, &runtime.Device{
 			ContainerPath: containerPath, HostPath: hostPath, Permissions: permissions,
 		})
+	}
+}
+
+// WithSELinuxOptions allows to set SELinux option for container.
+func WithSELinuxOptions(user, role, typ, level string) ContainerOpts {
+	return func(c *runtime.ContainerConfig) {
+		if c.Linux == nil {
+			c.Linux = &runtime.LinuxContainerConfig{}
+		}
+		if c.Linux.SecurityContext == nil {
+			c.Linux.SecurityContext = &runtime.LinuxContainerSecurityContext{}
+		}
+		c.Linux.SecurityContext.SelinuxOptions = &runtime.SELinuxOption{
+			User:  user,
+			Role:  role,
+			Type:  typ,
+			Level: level,
+		}
 	}
 }
 
